@@ -10,23 +10,27 @@ import type { SocialMediaMention, FilterState } from './types/data';
 function App() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<SocialMediaMention[]>([]);
+  const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterState>({
     dateRange: { startDate: null, endDate: null },
     countries: [],
     sentiment: [],
-    sortBy: 'estimated_views',
+    sortBy: 'reach',
     sortDirection: 'desc'
   });
 
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
+      setError(null);
       try {
+        console.log('Loading data with filters:', filters);
         const result = await fetchSocialMediaData(filters);
+        console.log('Loaded data:', result);
         setData(result);
       } catch (error) {
         console.error('Error loading data:', error);
-        // In a real app, we'd show an error notification here
+        setError('Failed to load PR data. Please check your connection and try again.');
       } finally {
         setLoading(false);
       }
@@ -35,10 +39,8 @@ function App() {
     loadData();
   }, [filters]);
 
-  // Removed mock data useEffect to rely solely on Supabase fetch
-
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <VideoBackground src="/background-video.mp4" />
       
       <Header />
@@ -50,13 +52,26 @@ function App() {
           transition={{ duration: 0.5 }}
         >
           <FilterPanel filters={filters} onFiltersChange={setFilters} />
+          
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6"
+            >
+              <div className="flex">
+                <div className="text-red-800">
+                  <strong>Error:</strong> {error}
+                </div>
+              </div>
+            </motion.div>
+          )}
+          
           <DataTable data={data} loading={loading} />
         </motion.div>
       </main>
     </div>
   );
 }
-
-// Mock data removed
 
 export default App;

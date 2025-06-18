@@ -15,13 +15,12 @@ export async function fetchSocialMediaData(filters: FilterState): Promise<Social
   try {
     let query = supabase
       .from('DATA_PALF_PR')
-      .select('"URL", "Date", "Source", "Headline", "Reach", "Desktop Reach", "Mobile Reach", "Country", "Sentiment"'); // Explicitly select necessary columns
+      .select('*'); // Select all columns to see what's available
 
     // Apply date range filter if provided
     if (filters.dateRange.startDate && filters.dateRange.endDate) {
-      // Supabase expects ISO 8601 format for date/timestamp filtering
-      query = query.gte('Date', filters.dateRange.startDate.toISOString())
-                  .lte('Date', filters.dateRange.endDate.toISOString());
+      query = query.gte('Date', filters.dateRange.startDate.toISOString().split('T')[0])
+                  .lte('Date', filters.dateRange.endDate.toISOString().split('T')[0]);
     }
 
     // Apply country filter if provided
@@ -31,44 +30,45 @@ export async function fetchSocialMediaData(filters: FilterState): Promise<Social
 
     // Apply sentiment filter if provided
     if (filters.sentiment.length > 0) {
-      // Convert frontend sentiment values to lowercase to match database
-      const lowercaseSentiments = filters.sentiment.map(s => s.toLowerCase());
-      query = query.in('Sentiment', lowercaseSentiments);
+      query = query.in('Sentiment', filters.sentiment);
     }
 
     // Apply sorting
     if (filters.sortBy) {
-      // Map frontend sort keys to database column names
-      const sortColumn = filters.sortBy === 'reach' ? 'Reach' : // Changed to sort by 'Reach'
+      const sortColumn = filters.sortBy === 'reach' ? 'Reach' : 
                         filters.sortBy === 'post_date' ? 'Date' : 
-                        'Reach'; // Default sort column changed to 'Reach'
+                        'Reach';
 
       query = query.order(sortColumn, { ascending: filters.sortDirection === 'asc' });
     } else {
-      // Default sort by Reach
       query = query.order('Reach', { ascending: false });
     }
 
     const { data, error } = await query;
 
-    if (error) throw error;
+    if (error) {
+      console.error('Supabase error:', error);
+      throw error;
+    }
+
+    console.log('Raw data from Supabase:', data); // Debug log
 
     // Transform the data to match our expected format
-    return (data || []).map(item => ({
-      id: item.URL, // Using URL as a unique identifier since there's no id column
-      platform: 'Unknown', // Platform info not available in the data
-      username: item.Source || 'Unknown',
-      post_date: item.Date,
-      content: item.Headline || '',
-      // Map new reach columns
-      desktop_reach: parseInt(item['Desktop Reach'] || '0', 10),
-      mobile_reach: parseInt(item['Mobile Reach'] || '0', 10),
-      reach: parseInt(item.Reach || '0', 10), // Map total Reach
-      // Removed estimated_views, likes, shares, comments
+    return (data || []).map((item, index) => ({
+      id: item.URL || `item-${index}`,
+      platform: 'PR',
+      username: item.Source || item.Influencer || 'Unknown',
+      post_date: item.Date || new Date().toISOString(),
+      content: item.Headline || item['Hit Sentence'] || item['Opening Text'] || '',
+      reach: parseInt(String(item.Reach || '0').replace(/,/g, ''), 10),
       country: item.Country || 'Unknown',
-      sentiment: item.Sentiment as 'Positive' | 'Neutral' | 'Negative' || 'Unknown',
+      sentiment: (item.Sentiment === 'Positive' || item.Sentiment === 'Neutral' || item.Sentiment === 'Negative') 
+        ? item.Sentiment as 'Positive' | 'Neutral' | 'Negative'
+        : 'Neutral',
       project: 'PALF',
-      url: item.URL || ''
+      url: item.URL || '',
+      language: item.Language || 'Unknown',
+      ave: item.AVE || '0'
     }));
 
   } catch (error) {
@@ -85,9 +85,8 @@ export async function fetchUniqueCountries(): Promise<string[]> {
 
     if (error) throw error;
 
-    // Manually filter for unique values and remove null/undefined
     const uniqueCountries = [...new Set(data?.map(item => item.Country).filter(Boolean))];
-    return uniqueCountries as string[]; // Cast to string[] after filtering
+    return uniqueCountries as string[];
   } catch (error) {
     console.error('Error fetching unique countries:', error);
     return [];
